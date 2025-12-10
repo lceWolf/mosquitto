@@ -67,7 +67,10 @@ int mosquitto_loop(struct mosquitto *mosq, int timeout, int max_packets)
 			FD_SET(mosq->sock, &writefds);
 		}else{
 #ifdef WITH_TLS
-			if(mosq->ssl == NULL || SSL_is_init_finished(mosq->ssl))
+			COMPAT_pthread_mutex_lock(&mosq->ssl_mutex);
+			bool ssl_check = (mosq->ssl == NULL || SSL_is_init_finished(mosq->ssl));
+			COMPAT_pthread_mutex_unlock(&mosq->ssl_mutex);
+			if(ssl_check)
 #endif
 			{
 				COMPAT_pthread_mutex_lock(&mosq->current_out_packet_mutex);

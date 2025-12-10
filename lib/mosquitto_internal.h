@@ -257,6 +257,9 @@ struct mosquitto {
 #ifndef WITH_BROKER
 	SSL_CTX *user_ssl_ctx;
 #endif
+#if defined(WITH_THREADING) && !defined(WITH_BROKER)
+	pthread_mutex_t ssl_mutex;
+#endif
 	char *tls_cafile;
 	char *tls_capath;
 	char *tls_certfile;

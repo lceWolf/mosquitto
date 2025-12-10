@@ -226,6 +226,7 @@ int net__socket_close(struct mosquitto *mosq)
 	if(!mosq->wsi)
 #endif
 	{
+		COMPAT_pthread_mutex_lock(&mosq->ssl_mutex);
 		if(mosq->ssl){
 			if(!SSL_in_init(mosq->ssl)){
 				SSL_shutdown(mosq->ssl);
@@ -233,6 +234,7 @@ int net__socket_close(struct mosquitto *mosq)
 			SSL_free(mosq->ssl);
 			mosq->ssl = NULL;
 		}
+		COMPAT_pthread_mutex_unlock(&mosq->ssl_mutex);
 	}
 #endif
 
@@ -872,21 +874,25 @@ int net__socket_connect_step3(struct mosquitto *mosq, const char *host)
 	}
 
 	if(mosq->ssl_ctx){
+		COMPAT_pthread_mutex_lock(&mosq->ssl_mutex);
 		if(mosq->ssl){
 			SSL_free(mosq->ssl);
 		}
 		mosq->ssl = SSL_new(mosq->ssl_ctx);
 		if(!mosq->ssl){
+			COMPAT_pthread_mutex_unlock(&mosq->ssl_mutex);
 			net__socket_close(mosq);
 			net__print_ssl_error(mosq);
 			return MOSQ_ERR_TLS;
 		}
 
 		if(!SSL_set_ex_data(mosq->ssl, tls_ex_index_mosq, mosq)){
+			COMPAT_pthread_mutex_unlock(&mosq->ssl_mutex);
 			net__socket_close(mosq);
 			net__print_ssl_error(mosq);
 			return MOSQ_ERR_TLS;
 		}
+		COMPAT_pthread_mutex_unlock(&mosq->ssl_mutex);
 		bio = BIO_new_socket(mosq->sock, BIO_NOCLOSE);
 		if(!bio){
 			net__socket_close(mosq);
@@ -981,14 +987,17 @@ ssize_t net__read(struct mosquitto *mosq, void *buf, size_t count)
 	assert(mosq);
 	errno = 0;
 #ifdef WITH_TLS
+	COMPAT_pthread_mutex_lock(&mosq->ssl_mutex);
 	if(mosq->ssl){
 		ERR_clear_error();
 		ret = SSL_read(mosq->ssl, buf, (int)count);
 		if(ret <= 0){
 			net__handle_ssl(mosq, ret);
 		}
+		COMPAT_pthread_mutex_unlock(&mosq->ssl_mutex);
 		return (ssize_t )ret;
 	}else{
+		COMPAT_pthread_mutex_unlock(&mosq->ssl_mutex);
 		/* Call normal read/recv */
 
 #endif
@@ -1013,6 +1022,7 @@ ssize_t net__write(struct mosquitto *mosq, const void *buf, size_t count)
 
 	errno = 0;
 #ifdef WITH_TLS
+	COMPAT_pthread_mutex_lock(&mosq->ssl_mutex);
 	if(mosq->ssl){
 		ERR_clear_error();
 		mosq->want_write = false;
@@ -1020,8 +1030,10 @@ ssize_t net__write(struct mosquitto *mosq, const void *buf, size_t count)
 		if(ret < 0){
 			net__handle_ssl(mosq, ret);
 		}
+		COMPAT_pthread_mutex_unlock(&mosq->ssl_mutex);
 		return (ssize_t )ret;
 	}else{
+		COMPAT_pthread_mutex_unlock(&mosq->ssl_mutex);
 		/* Call normal write/send */
 #endif
 

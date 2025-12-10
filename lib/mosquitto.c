@@ -221,6 +221,9 @@ int mosquitto_reinitialise(struct mosquitto *mosq, const char *id, bool clean_st
 	COMPAT_pthread_mutex_init(&mosq->msgs_in.mutex, NULL);
 	COMPAT_pthread_mutex_init(&mosq->msgs_out.mutex, NULL);
 	COMPAT_pthread_mutex_init(&mosq->mid_mutex, NULL);
+#ifdef WITH_TLS
+	COMPAT_pthread_mutex_init(&mosq->ssl_mutex, NULL);
+#endif
 	mosq->thread_id = pthread_self();
 #endif
 	/* This must be after COMPAT_pthread_mutex_init(), otherwise the log mutex may be
@@ -260,6 +263,9 @@ void mosquitto__destroy(struct mosquitto *mosq)
 		COMPAT_pthread_mutex_destroy(&mosq->msgs_in.mutex);
 		COMPAT_pthread_mutex_destroy(&mosq->msgs_out.mutex);
 		COMPAT_pthread_mutex_destroy(&mosq->mid_mutex);
+#ifdef WITH_TLS
+		COMPAT_pthread_mutex_destroy(&mosq->ssl_mutex);
+#endif
 	}
 #endif
 	if(mosq->sock != INVALID_SOCKET){
@@ -268,9 +274,12 @@ void mosquitto__destroy(struct mosquitto *mosq)
 	message__cleanup_all(mosq);
 	will__clear(mosq);
 #ifdef WITH_TLS
+	COMPAT_pthread_mutex_lock(&mosq->ssl_mutex);
 	if(mosq->ssl){
 		SSL_free(mosq->ssl);
+		mosq->ssl = NULL;
 	}
+	COMPAT_pthread_mutex_unlock(&mosq->ssl_mutex);
 #ifndef WITH_BROKER
 	if(mosq->user_ssl_ctx){
 		SSL_CTX_free(mosq->user_ssl_ctx);
